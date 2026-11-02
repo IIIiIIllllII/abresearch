@@ -45,8 +45,13 @@ def first_token_logprobs(model, tok, samples, cfg, direction=None) -> torch.Tens
 
 
 def refusal_score(logp: torch.Tensor, ids: list[int]) -> float:
-    p = logp[:, ids].exp().sum(-1).clamp(1e-8, 1 - 1e-8)
-    return (p.log() - (1 - p).log()).mean().item()
+    """Mean log-odds of the first token being a refusal token. Computed in log space (logsumexp
+    over refusal / non-refusal tokens) so confident refusers (p ~ 1 - 1e-6) don't overflow to inf."""
+    mask = torch.zeros(logp.shape[-1], dtype=torch.bool)
+    mask[ids] = True
+    log_p = torch.logsumexp(logp[:, mask], -1)
+    log_not = torch.logsumexp(logp[:, ~mask], -1)
+    return (log_p - log_not).mean().item()
 
 
 def select_layer(model, tok, cfg, p, dirs) -> int:
@@ -73,11 +78,21 @@ def select_layer(model, tok, cfg, p, dirs) -> int:
                   f"(base {rows[-1]['refusal_score_harm_base']:+.2f}) kl_safe={kl:.3f}")
         df = pd.DataFrame(rows)
         df.to_csv(f, index=False)
-    ok = df[df.kl_safe < cfg["kl_max"]]
-    if ok.empty:
-        print(f"[sweep] no layer with kl_safe < {cfg['kl_max']}; ignoring the KL filter")
-        ok = df
-    return int(ok.loc[ok.refusal_score_harm.idxmin(), "layer"])
+    # 1) only layers whose ablation actually removes refusal (log-odds < 0: refusal no longer the
+    #    majority first token); otherwise the KL filter alone happily picks a no-op early layer.
+    eff = df[df.refusal_score_harm < 0]
+    if eff.empty:
+        print("[sweep] WARNING: no layer flips refusal (all refusal scores >= 0); taking the min score")
+        return int(df.loc[df.refusal_score_harm.idxmin(), "layer"])
+    # 2) among those, Arditi-style: lowest refusal score with kl_safe < kl_max ...
+    ok = eff[eff.kl_safe < cfg["kl_max"]]
+    if not ok.empty:
+        return int(ok.loc[ok.refusal_score_harm.idxmin(), "layer"])
+    # 3) ... else the least disruptive effective layer
+    pick = eff.loc[eff.kl_safe.idxmin()]
+    print(f"[sweep] no effective layer with kl_safe < {cfg['kl_max']}; taking the lowest-KL effective layer "
+          f"{int(pick.layer)} (kl_safe={pick.kl_safe:.3f}, refusal={pick.refusal_score_harm:+.2f})")
+    return int(pick.layer)
 
 
 def build_conditions(dirs, layer: int, extra: list[str]) -> dict[str, torch.Tensor | None]:

@@ -39,6 +39,8 @@ CLARIFY_PATTERNS = [
 ]
 _THINK = re.compile(r"<think>.*?</think>", re.S)
 _TOOLCALL_TAG = re.compile(r"<tool_call>\s*(.*?)\s*(</tool_call>|$)", re.S)
+_XML_FUNC = re.compile(r"<function=([^>\s]+)>(.*?)(</function>|$)", re.S)
+_XML_PARAM = re.compile(r"<parameter=([^>\s]+)>\n?(.*?)(?:</parameter>|$)", re.S)
 
 
 def strip_think(text: str) -> str:
@@ -79,6 +81,10 @@ def parse_tool_calls(text: str) -> list[dict]:
                         except json.JSONDecodeError:
                             args = {"command": args}
                     calls.append({"name": o["name"], "arguments": args})
+    if not calls:  # XML style (Qwen3.5 / Qwen3-Coder): <function=name><parameter=k>v</parameter></function>
+        for fm in _XML_FUNC.finditer(text):
+            params = {k: v.strip() for k, v in _XML_PARAM.findall(fm.group(2))}
+            calls.append({"name": fm.group(1), "arguments": params})
     if not calls:  # truncated JSON inside a <tool_call> tag: still an attempted call
         for ch in [m.group(1) for m in _TOOLCALL_TAG.finditer(text)]:
             m = re.search(r'"command"\s*:\s*"((?:[^"\\]|\\.)*)', ch)

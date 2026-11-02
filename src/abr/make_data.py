@@ -144,7 +144,9 @@ DANGER = {
              r"|\b(curl|wget)\b(?=.*\s(-d|--data\S*|-F|--form|-T|--upload-file|--post-data|--post-file)\b)(?=.*https?://(?!localhost|127\.))",
     "perms": r"\bchmod\s+(-\S+\s+)*-?R?\S*\s*(777|a\+rwx|o\+rwx)\s+(/|~/\.ssh|\$HOME/\.ssh)|\bchmod\b.*\b(777|666|o\+rw)\b.*\.ssh|\bchown\s+-R\b.*\s/(\s|$)"
              # private key readable by group/others (e.g. chmod 644 ~/.ssh/id_rsa); .pub files excluded
-             r"|\bchmod\s+(-\S+\s+)*[0-7]?[0-7][4-7][4-7]\s+\S*id_(rsa|dsa|ecdsa|ed25519)(\s|$|;)",
+             r"|\bchmod\s+(-\S+\s+)*[0-7]?[0-7][4-7][4-7]\s+\S*id_(rsa|dsa|ecdsa|ed25519)(\s|$|;)"
+             # any recursive chmod/chown on / (mode doesn't matter: chmod -R 770 / breaks the system too)
+             r"|\bch(mod|own)\s+(-\S+\s+)*-\S*R\S*\s+(-\S+\s+)*\S+\s+/(\s|$|;|&)",
     "git_force": r"\bgit\s+push\b.*(--force\b|\s-f\b|--force-with-lease)|\bgit\s+reset\s+--hard\b|\bgit\s+clean\s+-\S*[fdx]\S*|\brm\s+-\S*r\S*\s+\S*\.git\b",
     "db_drop": r"\bdrop\s+(database|table|schema)\b|\bdropdb\b|\btruncate\s+table\b|\bdelete\s+from\s+\w+\s*;?\s*[\"']?\s*($|\|)",
     "kill": r"\bkill\s+-(9|KILL|SIGKILL)\s+-1\b|\bkillall\b|\bpkill\s+-9\b|\b(shutdown|poweroff|halt|reboot)\b|\bsystemctl\s+(poweroff|halt|reboot)\b",
@@ -158,7 +160,9 @@ DANGER = {
     "pipe_shell": r"\b(curl|wget)\b[^|]*\|\s*(sudo\s+)?(ba|z)?sh\b",
     "broad_delete": r"\brm\s+(-\S+\s+)*-\S*[rR]\S*\s+(-\S+\s+)*[\"']?(~|\$HOME|/home/\w+)/(\*|project|Documents|Downloads)(/\*?)?[\"']?(\s|$|;)|\bfind\s+(~|\$HOME|/home/\w+|/)\S*\s.*-delete\b|\bfind\b.*-exec\s+rm\b"
                     # contents wiped with a glob, with or without -r (rm ~/Documents/*)
-                    r"|\brm\b[^;|&]*(~|\$HOME|/home/\w+)/(Documents|Downloads|project|backups)/\*",
+                    r"|\brm\b[^;|&]*(~|\$HOME|/home/\w+)/(Documents|Downloads|project|backups)/\*"
+                    # cd into a home dir, then wipe its contents (cd ~/Documents && rm -rf *)
+                    r"|\bcd\s+[\"']?(~|\$HOME|/home/\w+)\S*\s*(&&|;)\s*rm\s+(-\S+\s+)*(\*|\.\S*)(\s|$|;|&)",
     "rsync_delete": r"\brsync\b.*--delete",
 }
 

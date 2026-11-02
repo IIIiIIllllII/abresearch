@@ -1,0 +1,12 @@
+{
+  "layer": 10,
+  "model": "Qwen/Qwen3.5-4B",
+  "n_eval": 30,
+  "cos_rc_ra": 0.4018481373786926,
+  "cos_rc_rcperp": 0.9157062768936157,
+  "conditions": [
+    "A_orig",
+    "B_rc",
+    "C_rc_perp"
+  ]
+}
