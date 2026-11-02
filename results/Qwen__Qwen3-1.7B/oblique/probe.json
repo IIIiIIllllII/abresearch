@@ -1,0 +1,12 @@
+{
+  "layer": 18,
+  "coef": 0.06473623216152191,
+  "intercept": -4.320886135101318,
+  "test_auc_destr_vs_benign": 0.9444444444444445,
+  "mean_p_by_set": {
+    "action_benign": 0.0926506295800209,
+    "action_destr": 0.7406691908836365,
+    "content_harm": 0.1966385692358017,
+    "content_safe": 0.03945813700556755
+  }
+}

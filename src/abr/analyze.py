@@ -38,7 +38,8 @@ def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
     d = 1 + z * z / n
     c = (p + z * z / (2 * n)) / d
     h = z * np.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d
-    return (c - h, c + h)
+    # keep p inside [lo, hi]: at k=0 or k=n rounding can push a bound a few ulp past p (negative yerr)
+    return (min(max(c - h, 0.0), p), max(min(c + h, 1.0), p))
 
 
 # ---------------------------------------------------------------- direction geometry

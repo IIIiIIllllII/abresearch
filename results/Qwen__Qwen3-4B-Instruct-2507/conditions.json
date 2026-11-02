@@ -1,9 +1,9 @@
 {
   "layer": 19,
   "model": "Qwen/Qwen3-4B-Instruct-2507",
-  "n_eval": 30,
-  "cos_rc_ra": 0.5638284683227539,
-  "cos_rc_rcperp": 0.82589191198349,
+  "n_eval": 48,
+  "cos_rc_ra": 0.6054400205612183,
+  "cos_rc_rcperp": 0.7958909273147583,
   "conditions": [
     "A_orig",
     "B_rc",

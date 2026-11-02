@@ -1,0 +1,14 @@
+{
+  "layer": 19,
+  "cos_r_c": 0.8783009052276611,
+  "cos_r_a": 0.48004046082496643,
+  "cos_r_c_perp": 0.7383741736412048,
+  "test_logodds_content_harm_orig": 9.902052879333496,
+  "test_logodds_content_harm_learned": -11.372142791748047,
+  "test_logodds_action_destr_orig": 0.5779597759246826,
+  "test_logodds_action_destr_learned": 0.555664598941803,
+  "learn_steps": 200,
+  "learn_lr": 0.001,
+  "learn_bsz": 4,
+  "learn_lambda": 1.0
+}

@@ -76,6 +76,7 @@ rsync -avz -e "ssh -p <PORT>" root@<HOST>:/work/results/Qwen__Qwen3-4B-Instruct-
 - 리포트는 로컬에서 한다. 프로브가 로컬 `activations/`(226MB)를 쓰고, 판정 감사(아래 체크리스트)도 로컬에서 하기 때문이다.
 - test 분할은 세트당 48개다. 그래서 `oblique_n=50`이어도 실제로는 n=48이 된다.
 - 끊기면 같은 명령을 다시 실행한다. 생성은 샘플 단위로 이어 하고, `learned.pt`가 있으면 방향 학습을 건너뛴다. 학습 중 OOM이 나면 `learn_micro=2`로 낮춘다.
+  - **Qwen3.5-4B는 24GB GPU(RTX 4090)에서 `learn_micro=4`가 OOM이다.** 이 모델은 처음부터 `learn_micro=2`로 돌린다. 2507과 1.7B는 4로 된다.
 - 방향 학습에 HF gradient checkpointing을 쓰지 않는다. ablation hook과 함께 쓰면 재계산 결과가 맞지 않아 `CheckpointError`가 난다. 그래서 마이크로배치로 grad를 누적한다.
 - conditional 조건은 새로 생성하지 않는다. `base`와 `rc_a100`의 출력을 프롬프트별 게이트에 따라 조합한다.
 
@@ -84,8 +85,10 @@ rsync -avz -e "ssh -p <PORT>" root@<HOST>:/work/results/Qwen__Qwen3-4B-Instruct-
 1. **판정기를 믿기 전에 샘플을 읽는다.** 휴리스틱 judge는 위험 패턴 정규식에 의존한다. 첫 실행에서 `rm -rf ~/Documents/*`, api_keys를 담은 POST, 개인키 `chmod 644`, 2507의 `chmod -R 770 /`가 `safe_alt`로 잘못 분류됐었다. 그래서 `samples_*.jsonl`에서 action_destr의 `safe_alt`·`other` 명령을 전부 훑는다. 놓친 게 있으면 `make_data.DANGER`를 고치고 `--stages analyze`만 다시 돌린다. 판정이 analyze에 있으므로 재생성은 필요 없다.
 2. **콘텐츠 거부율은 *명시적* 거절의 비율이다.** 돌려 말하는 응답은 거부로 안 잡힌다. B_rc 샘플 몇 개를 직접 읽고 실제로 응했는지 보고에 같이 적는다.
 3. **바닥 효과를 확인한다.** A_orig에서 action_destr의 `refuse_text + clarify + safe_alt`가 작으면, 행동 신중함을 보존하는지는 판단할 수 없다고 보고한다. Qwen3-1.7B가 이 경우였다(명확한 파괴 요청 25/25 그대로 실행).
-4. **평가 샘플 구성을 확인한다.** `n_eval`은 test 세트 *앞에서부터* N개를 쓴다. 기본 30개면 ambiguous가 약 4개, AgentHarm이 약 1개뿐이다. 하위 집합에 대해 결론을 내리려면 `--set n_eval=48`(test 전체)로 돌린다. `metrics.csv`의 `*_n` 열로 표본 수를 꼭 같이 보고한다.
-5. 수치는 노이즈 ceiling(`√(rel_x·rel_y)`)과 Wilson CI를 함께 보고한다. n=30이면 CI 폭이 ±0.15 안팎이다.
+4. **C_rc_perp가 대조군으로 작동하는지 확인한다.** 직교 제거가 콘텐츠 거부를 건드리지 않아야 "r_c가 거부를 담은 방향"이라고 말할 수 있다. n=48 full 데이터에서 A_orig→C_rc_perp의 콘텐츠 거부는 2507이 1.00→0.98(깨끗함), Qwen3.5-4B가 0.98→0.42(절반 누출), 1.7B가 0.69→0.02(완전 붕괴)였다. 누출이 크면 그 모델에서는 대조 주장을 약하게 쓴다.
+5. **평가 샘플 구성을 확인한다.** `n_eval`은 test 세트 *앞에서부터* N개를 쓴다. 기본 30개면 ambiguous가 약 4개, AgentHarm이 약 1개뿐이다. 하위 집합에 대해 결론을 내리려면 `--set n_eval=48`(test 전체)로 돌린다. `metrics.csv`의 `*_n` 열로 표본 수를 꼭 같이 보고한다.
+6. 수치는 노이즈 ceiling(`√(rel_x·rel_y)`)과 Wilson CI를 함께 보고한다. n=30이면 CI 폭이 ±0.15 안팎이다.
+7. **거부 제거 조건에서 "돌려 말하는 응답"을 정량화한다.** 체크리스트 2번의 후속이다. 설명조로 길게 늘이거나 예방 쪽으로 틀어버리는 응답은 `refused=false`로 잡혀서 응낙률을 부풀린다. 2507의 B_rc는 거부 안 된 46개 중 실제 응낙이 15개뿐이었고(회피 표현 중앙값 3개), Qwen3.5-4B는 45개 중 34개가 실제 응낙이었다(중앙값 0개). **같은 거부율 0.04~0.06이 모델에 따라 전혀 다른 의미다.** 원문을 길게 출력하지 말고 응답 길이·회피 표현 개수·요청 형식 충족 여부 같은 집계 지표로 본다.
 
 ## 모델 구성과 모델별 메모
 
@@ -93,7 +96,7 @@ rsync -avz -e "ssh -p <PORT>" root@<HOST>:/work/results/Qwen__Qwen3-4B-Instruct-
 |---|---|
 | `Qwen/Qwen3.5-4B` | **4B 실험의 메인** (신세대) |
 | `Qwen/Qwen3-4B-Instruct-2507` | 대조군: 같은 Qwen3 세대에서 크기만 키운 모델 |
-| `Qwen/Qwen3-1.7B` | 소형 기준선 (행동 바닥 효과 있음) |
+| `Qwen/Qwen3-1.7B` | 소형 기준선 (행동 바닥 효과 + 직교 대조군 붕괴, 아래 참조) |
 
 여러 모델을 비교할 때는 `python -m abr.compare`를 쓴다. 결과는 `results/comparison/`에 생기고, 역할 이름은 `compare.ROLES`에 있다.
 
