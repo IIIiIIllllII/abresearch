@@ -1,0 +1,10 @@
+# Shared by both images. torch is installed separately per image (XPU wheel / CUDA base image).
+transformers==5.22.1
+accelerate==1.15.0
+datasets==5.1.0
+huggingface_hub==2.4.0
+numpy==2.5.4
+pandas==3.1.0
+matplotlib==3.11.2
+scikit-learn==1.9.1
+pyyaml==6.0.3

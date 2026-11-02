@@ -1,0 +1,29 @@
+# Local image: Intel Arc (Lunar Lake / Xe2) via the PyTorch XPU wheels.
+FROM docker.io/library/archlinux:latest
+
+# Latest compute runtime (NEO) + IGC + Level Zero loader from Arch repos (Xe2/Lunar Lake support).
+RUN pacman -Syu --noconfirm --needed \
+        intel-compute-runtime intel-graphics-compiler level-zero-loader \
+        clinfo uv ca-certificates \
+    && pacman -Scc --noconfirm
+
+ARG UID=1000
+RUN useradd -m -u ${UID} -s /bin/bash exp
+
+ENV UV_PYTHON_INSTALL_DIR=/opt/python \
+    VIRTUAL_ENV=/opt/venv \
+    PATH=/opt/venv/bin:$PATH
+RUN uv venv --python 3.12 /opt/venv \
+    && uv pip install --python /opt/venv/bin/python \
+        torch==2.14.1+xpu --index-url https://download.pytorch.org/whl/xpu \
+    && uv cache clean
+COPY requirements.txt /tmp/requirements.txt
+RUN uv pip install --python /opt/venv/bin/python -r /tmp/requirements.txt && uv cache clean
+
+ENV HF_HOME=/hf \
+    HOME=/tmp/home \
+    MPLCONFIGDIR=/tmp/mpl \
+    PYTHONPATH=/work/src \
+    PYTHONUNBUFFERED=1
+USER exp
+WORKDIR /work

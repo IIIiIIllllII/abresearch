@@ -1,0 +1,50 @@
+# ---- model / hardware -------------------------------------------------------
+model: Qwen/Qwen3-1.7B          # any HF chat model with a chat template, e.g. meta-llama/Llama-3.1-8B-Instruct
+dtype: bf16                     # bf16 | fp16 | fp32
+device: null                    # null = auto (cuda > xpu > cpu)
+device_map: null                # "auto" to shard across multiple GPUs (accelerate)
+batch_size: 16                  # forward passes (collect / sweep)
+gen_batch_size: 8               # generation
+max_new_tokens: 256
+chat_template_kwargs:
+  enable_thinking: false        # Qwen3: no <think> block. Ignored by other templates.
+
+# ---- data -------------------------------------------------------------------
+seed: 0
+n_per_set: 160
+train_frac: 0.7
+content_harm_sources:           # tried in order, pooled + deduped. "repo[:config]"
+  - walledai/HarmBench:standard
+  - walledai/AdvBench
+  - mlabonne/harmful_behaviors
+content_safe_sources:
+  - tatsu-lab/alpaca
+agentharm_repo: ai-safety-institute/AgentHarm
+agentharm_frac: 0.15            # share of action pairs drawn from AgentHarm if accessible (0 = templates only)
+
+# ---- directions -------------------------------------------------------------
+exclude_ambiguous_from_directions: true
+n_split_half: 20
+
+# ---- ablation / eval --------------------------------------------------------
+layer: null                     # null = auto-select (max r_c effect, see layer_sweep.csv)
+sweep_n: 32
+sweep_min_frac: 0.0
+sweep_max_frac: 0.8             # Arditi et al.: skip the last 20% of layers
+kl_max: 0.1
+extra_conditions: []            # optional: D_ra (ablate r_a), E_ha (ablate h_a)
+n_eval: 30                      # generations per set per condition (from the test split)
+judge: heuristic                # heuristic | hf:<repo_id>
+judge_global_danger: true
+
+# ---- paths ------------------------------------------------------------------
+data_dir: data/sets
+results_dir: results
+
+presets:
+  smoke:
+    n_per_set: 10
+    n_eval: 3
+    sweep_n: 4
+    max_new_tokens: 128
+    n_split_half: 5

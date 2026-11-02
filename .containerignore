@@ -1,0 +1,5 @@
+.git
+results
+data/activations
+*.pt
+logs

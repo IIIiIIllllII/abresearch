@@ -1,0 +1,21 @@
+__pycache__/
+logs/
+
+# Models live in the HF cache (~/.cache/huggingface, mounted at /hf), never in the repo.
+*.safetensors
+*.bin
+*.gguf
+
+# Heavy / reproducible artifacts
+*.pt
+*.npz
+*.tmp
+results/*/activations/
+results/*/h_proj/
+results/*_smoke/
+
+# Prompt sets and model outputs contain third-party harmful-prompt data (HarmBench/AdvBench/AgentHarm)
+# and harmful generations from ablated models: regenerate with make_data / ablate_eval, don't publish.
+data/sets/
+results/*/generations/
+results/*/samples_*.jsonl

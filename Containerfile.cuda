@@ -1,0 +1,17 @@
+# Cloud image: NVIDIA (Vast.ai). Base already ships torch 2.14.1 + CUDA 12.6 runtime.
+FROM docker.io/pytorch/pytorch:2.14.1-cuda12.6-cudnn9-runtime
+
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt \
+    && python -c "import torch; assert torch.__version__.startswith('2.14.1'), torch.__version__"
+
+RUN useradd -m -u 1000 -s /bin/bash exp \
+    && mkdir -p /work /hf && chown exp:exp /work /hf
+COPY --chown=exp:exp . /work
+
+ENV HF_HOME=/hf \
+    MPLCONFIGDIR=/tmp/mpl \
+    PYTHONPATH=/work/src \
+    PYTHONUNBUFFERED=1
+USER exp
+WORKDIR /work
