@@ -28,12 +28,14 @@ def capture_residual(model, store: dict):
 
 
 @contextmanager
-def ablate_direction(model, direction: torch.Tensor | None):
+def ablate_direction(model, direction: torch.Tensor | None, alpha: float = 1.0):
     """Project `direction` out of the residual stream at the input and output of every decoder block.
 
-    x <- x - (x . r) r   with r unit-norm, applied at all token positions (prompt and generated).
+    x <- x - alpha (x . r) r   with r unit-norm, applied at all token positions (prompt and generated).
+    alpha=1 is full ablation, 0 < alpha < 1 partial. If `direction` requires grad, the hook is
+    differentiable w.r.t. it (enter the context once per forward pass so the graph is fresh).
     """
-    if direction is None:
+    if direction is None or alpha == 0:
         yield
         return
     r = direction.float()
@@ -42,10 +44,15 @@ def ablate_direction(model, direction: torch.Tensor | None):
 
     def proj_out(x):
         key = (x.device, x.dtype)
-        if key not in cache:
-            cache[key] = r.to(device=x.device, dtype=x.dtype)
-        v = cache[key]
-        return x - (x @ v).unsqueeze(-1) * v
+        if r.requires_grad:  # no cache: checkpoint recomputation must save the same tensors as the forward
+            v = r.to(device=x.device, dtype=x.dtype)
+        else:
+            if key not in cache:
+                cache[key] = r.to(device=x.device, dtype=x.dtype)
+            v = cache[key]
+        if alpha == 1.0:
+            return x - (x @ v).unsqueeze(-1) * v
+        return x - alpha * (x @ v).unsqueeze(-1) * v
 
     def pre_hook(_m, args, kwargs):
         if args:

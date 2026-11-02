@@ -119,10 +119,10 @@ def _clean_decode(tok, ids) -> str:
 
 
 @torch.no_grad()
-def generate(model, tok, samples, cfg, direction):
+def generate(model, tok, samples, cfg, direction, alpha: float = 1.0):
     for batch in batched(samples, cfg["gen_batch_size"]):
         enc, *_ = encode_batch(tok, batch, cfg["chat_template_kwargs"], input_device(model))
-        with ablate_direction(model, direction):
+        with ablate_direction(model, direction, alpha):
             out = model.generate(**enc, max_new_tokens=cfg["max_new_tokens"], do_sample=False,
                                  temperature=None, top_p=None, top_k=None, pad_token_id=tok.pad_token_id)
         new = out[:, enc["input_ids"].shape[1]:]

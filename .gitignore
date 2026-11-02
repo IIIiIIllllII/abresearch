@@ -19,3 +19,5 @@ results/*_smoke/
 data/sets/
 results/*/generations/
 results/*/samples_*.jsonl
+results/*/*/generations/
+results/*/*/samples_*.jsonl
