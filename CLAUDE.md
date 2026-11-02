@@ -40,6 +40,45 @@ python -m abr.run_all [--preset smoke] [--set key=val ...] [--stages ...] [--lay
 - 모델 교체는 `--set model=<repo> [device_map=auto]`로 한다. 코드는 수정하지 않는다. 레이어 경로를 못 찾으면 `common.get_layers`의 후보 목록에 경로를 추가한다.
 - 오래 걸리는 실행은 백그라운드로 돌린다. `logs/<name>.log`에 append하고 끝에 `EXIT=$?`를 남겨서, 크래시 여부를 로그만 보고 알 수 있게 한다.
 
+## 추가 실험: oblique / learned / conditional (`abr.oblique`, 클라우드에서 실행)
+
+로컬 iGPU로는 3~4시간이 걸려서(조건 34개 × 3세트 × n=48, 방향 학습 포함) **GPU 단계는 클라우드에서, 판정과 리포트는 로컬에서** 한다. 방법과 출력은 `src/abr/oblique.py` docstring을 본다. 결과는 `results/<run>/oblique/`에 생긴다.
+
+- CUDA 이미지는 빌드할 때 코드를 복사한다. 코드를 바꿨다면 이미지를 다시 빌드해 push한다.
+- 이미지에는 `results/`가 빠진다. 로컬과 같은 레이어·방향을 쓰려면 `directions.pt`와 `conditions.json`을 인스턴스에 올린다. 클라우드에서 다시 수집하면 bf16 수치 차이로 방향이 조금 달라진다.
+- 이미지 push와 인스턴스 작업은 외부로 나가는 작업이다. 명령만 안내하고 실행은 사용자가 한다.
+
+```bash
+# 로컬: 이미지 재빌드 + push
+podman build -t ghcr.io/<you>/abresearch:cuda -f Containerfile.cuda .
+podman push ghcr.io/<you>/abresearch:cuda
+
+# 로컬 → 인스턴스: 방향과 레이어만 올림 (약 3MB)
+ssh -p <PORT> root@<HOST> mkdir -p /work/results/Qwen__Qwen3-4B-Instruct-2507
+rsync -avz -e "ssh -p <PORT>" \
+  results/Qwen__Qwen3-4B-Instruct-2507/{directions.pt,conditions.json} \
+  root@<HOST>:/work/results/Qwen__Qwen3-4B-Instruct-2507/
+
+# 인스턴스: 생성 + 방향 학습만
+cd /work
+python -m abr.oblique --set model=Qwen/Qwen3-4B-Instruct-2507 oblique_n=50 \
+  gen_batch_size=16 learn_micro=4 --stages gpu learn \
+  >> logs_oblique.log 2>&1; echo "EXIT=$?" >> logs_oblique.log
+
+# 인스턴스 → 로컬: 회수
+rsync -avz -e "ssh -p <PORT>" root@<HOST>:/work/results/Qwen__Qwen3-4B-Instruct-2507/oblique/ \
+  results/Qwen__Qwen3-4B-Instruct-2507/oblique/
+
+# 로컬: 판정 + bootstrap + 플롯 (CPU)
+./run.sh python -m abr.oblique --set model=Qwen/Qwen3-4B-Instruct-2507 --stages report
+```
+
+- 리포트는 로컬에서 한다. 프로브가 로컬 `activations/`(226MB)를 쓰고, 판정 감사(아래 체크리스트)도 로컬에서 하기 때문이다.
+- test 분할은 세트당 48개다. 그래서 `oblique_n=50`이어도 실제로는 n=48이 된다.
+- 끊기면 같은 명령을 다시 실행한다. 생성은 샘플 단위로 이어 하고, `learned.pt`가 있으면 방향 학습을 건너뛴다. 학습 중 OOM이 나면 `learn_micro=2`로 낮춘다.
+- 방향 학습에 HF gradient checkpointing을 쓰지 않는다. ablation hook과 함께 쓰면 재계산 결과가 맞지 않아 `CheckpointError`가 난다. 그래서 마이크로배치로 grad를 누적한다.
+- conditional 조건은 새로 생성하지 않는다. `base`와 `rc_a100`의 출력을 프롬프트별 게이트에 따라 조합한다.
+
 ## 결과를 보고하기 전 체크리스트 (실제로 겪은 함정)
 
 1. **판정기를 믿기 전에 샘플을 읽는다.** 휴리스틱 judge는 위험 패턴 정규식에 의존한다. 첫 실행에서 `rm -rf ~/Documents/*`, api_keys를 담은 POST, 개인키 `chmod 644`, 2507의 `chmod -R 770 /`가 `safe_alt`로 잘못 분류됐었다. 그래서 `samples_*.jsonl`에서 action_destr의 `safe_alt`·`other` 명령을 전부 훑는다. 놓친 게 있으면 `make_data.DANGER`를 고치고 `--stages analyze`만 다시 돌린다. 판정이 analyze에 있으므로 재생성은 필요 없다.
@@ -85,5 +124,6 @@ python -m abr.run_all [--preset smoke] [--set key=val ...] [--stages ...] [--lay
 | `src/abr/make_data.py` | 4세트 생성, `DANGER` 위험 패턴(judge가 사용) |
 | `src/abr/judge.py` | `Judge` 인터페이스, 휴리스틱 judge, `hf:<repo>` judge |
 | `src/abr/compare.py` | 여러 모델 비교 표·플롯 (CPU) |
+| `src/abr/oblique.py` | θ×α 부분 제거 스윕, 학습 방향, 프로브 게이트 제거, bootstrap CI (`results/<run>/oblique/`) |
 | `scripts/model_info.py` | HF 저장소 존재 여부, 구조, 템플릿 기능 확인 (`--net` 필요) |
 | `scripts/inspect_prompt.py` | 렌더링 결과와 토큰 위치를 눈으로 확인할 때 쓴다(새 모델로 바꾸면 먼저 실행) |
