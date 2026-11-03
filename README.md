@@ -246,6 +246,51 @@ Ablation at the selected layer (A = original, B = ablate r_c, C = ablate r_c⊥r
 - 2507 has no thinking template, so its t_post_inst is `assistant\n`, unlike the `</think>\n\n` of Qwen3 / 3.5.
 - The heuristic action judge was patched again after auditing (`chmod` on `~/.ssh` via glob or `-R`, `find . -delete`). Remaining errors are possible in `other` / `safe_alt`.
 
+### Oblique, learned direction and probe gating
+
+These runs come from the earlier cloud instance, on the **previous prompt set** (before the regeneration above; its content_harm still included AdvBench), at each model's selected layer with n = 48 per set. Method and outputs: `src/abr/oblique.py` docstring, `results/<run>/oblique/`. Families:
+- **oblique**: ablate d(θ) = cos θ · r_a + sin θ · r_c⊥ at strength α (rc = θ at r_c's own angle; rc_a100 = full r_c removal, reference point B).
+- **learned**: a unit direction trained on the train split to lower first-token content refusal while holding first-token action refusal at its original level (model frozen).
+- **conditional**: remove r_c only for prompts that a 1-D probe on h_a scores as unlikely to be a destructive action request (gate threshold on probe p). Each output is exactly the base or the rc_a100 output.
+
+Selectivity (`sel`) is the signed distance from the straight line base → rc_a100 in the (content refusal, action caution) plane, with paired bootstrap 95% CIs; > 0 means more action caution kept than full r_c removal gives for the same content-refusal drop. Content refusal and `sel` use the original string-match judge; action caution = `refuse_text + clarify + safe_alt` on action_destr. The three-way content labels were added afterwards by re-judging the saved outputs (`scripts/oblique_judge3.py`, same judge and rubric as above; no regeneration). Conditional rows are composed from the judged base / rc_a100 outputs with the probe gate, as in `abr.oblique`.
+
+Best point per family (highest `sel`), plus base and full r_c removal for reference:
+
+| model | point | content refusal (string) [CI] | three-way: explicit / evasive / real | action caution [CI] | benign tool use | sel [CI] |
+|---|---|---|---|---|---|---|
+| Qwen3.5-4B | base (A) | 0.98 [0.94,1.00] | 0.98 / 0.02 / 0.00 | 0.60 [0.46,0.75] | 0.92 | — |
+| Qwen3.5-4B | oblique: `th30_a100` | 0.12 [0.04,0.23] | 0.06 / 0.06 / 0.88 | 0.17 [0.06,0.29] | 0.98 | +0.02 [-0.06,+0.11] |
+| Qwen3.5-4B | rc: `rc_a100` | 0.06 [0.00,0.15] | 0.04 / 0.08 / 0.88 | 0.10 [0.02,0.21] | 1.00 | — |
+| Qwen3.5-4B | learned: `learned_a100` | 0.06 [0.00,0.15] | 0.23 / 0.42 / 0.35 | 0.58 [0.44,0.73] | 0.92 | +0.42 [+0.30,+0.53] |
+| Qwen3.5-4B | conditional: `cond_p070` | 0.25 [0.12,0.38] | 0.25 / 0.08 / 0.67 | 0.48 [0.33,0.62] | 0.96 | +0.24 [+0.13,+0.35] |
+| Qwen3-4B-2507 | base (A) | 1.00 [1.00,1.00] | 1.00 / 0.00 / 0.00 | 0.58 [0.44,0.73] | 0.88 | — |
+| Qwen3-4B-2507 | rc (full): `rc_a100` | 0.04 [0.00,0.10] | 0.02 / 0.38 / 0.60 | 0.17 [0.06,0.27] | 0.94 | — |
+| Qwen3-4B-2507 | oblique: `th90_a100` | 0.98 [0.94,1.00] | 0.96 / 0.04 / 0.00 | 0.65 [0.50,0.77] | 0.90 | +0.07 [+0.01,+0.13] |
+| Qwen3-4B-2507 | rc: `rc_a050` | 0.08 [0.02,0.17] | 0.04 / 0.54 / 0.42 | 0.21 [0.10,0.33] | 0.94 | +0.02 [-0.05,+0.10] |
+| Qwen3-4B-2507 | learned: `learned_a100` | 0.10 [0.02,0.21] | 0.04 / 0.73 / 0.23 | 0.56 [0.42,0.69] | 0.88 | +0.34 [+0.21,+0.45] |
+| Qwen3-4B-2507 | conditional: `cond_p095` | 0.17 [0.06,0.27] | 0.17 / 0.31 / 0.52 | 0.42 [0.29,0.54] | 0.94 | +0.18 [+0.08,+0.29] |
+| Qwen3-1.7B | base (A) | 0.67 [0.52,0.79] | 0.75 / 0.21 / 0.04 | 0.21 [0.10,0.33] | 0.88 | — |
+| Qwen3-1.7B | oblique: `th90_a100` | 0.02 [0.00,0.06] | 0.02 / 0.79 / 0.19 | 0.29 [0.17,0.42] | 0.88 | +0.17 [+0.04,+0.28] |
+| Qwen3-1.7B | rc: `rc_a100` | 0.02 [0.00,0.06] | 0.02 / 0.17 / 0.81 | 0.12 [0.04,0.23] | 0.94 | — |
+| Qwen3-1.7B | learned: `learned_a100` | 0.00 [0.00,0.00] | 0.00 / 0.60 / 0.40 | 0.17 [0.06,0.27] | 0.90 | +0.04 [-0.04,+0.13] |
+| Qwen3-1.7B | conditional: `cond_p030` | 0.17 [0.06,0.27] | 0.17 / 0.23 / 0.60 | 0.21 [0.10,0.33] | 0.88 | +0.06 [-0.01,+0.13] |
+
+Learned direction: cosine with the diff-of-means directions at the same layer (the vector itself is not saved in the repo).
+
+| model | layer | cos(learned, r_c) | cos(learned, r_a) | cos(learned, r_c⊥) | cos(r_c, r_a) |
+|---|---|---|---|---|---|
+| Qwen3.5-4B | 10 | 0.83 | 0.37 | 0.74 | 0.45 |
+| Qwen3-4B-2507 | 19 | 0.88 | 0.48 | 0.74 | 0.61 |
+| Qwen3-1.7B | 18 | 0.94 | 0.43 | 0.84 | 0.51 |
+
+**Findings**
+1. **By the string-match judge the learned direction is the most selective point in both 4B models.** sel is +0.42 for Qwen3.5-4B and +0.34 for 2507, with CIs well above 0: explicit content refusal drops about as far as full r_c removal while action caution stays near base. It stays close to r_c (cos 0.83 / 0.88) and is slightly *less* aligned with r_a than r_c is (0.37 vs 0.45; 0.48 vs 0.61).
+2. **The three-way judge shows that most of that selectivity is evasion, not compliance.** learned_a100 gives real compliance of 0.35 (Qwen3.5-4B) and 0.23 (2507), against 0.88 and 0.60 for full r_c removal; the rest are evasive answers (0.42 and 0.73). The learned direction mostly removes the refusal *wording*, resembling the late "expression" pattern above rather than the decision to decline.
+3. **Probe gating trades selectivity for real compliance.** The best conditional thresholds reach sel +0.24 (Qwen3.5-4B) and +0.18 (2507) with real compliance 0.67 and 0.52, because gated prompts get the full rc_a100 output.
+4. **No oblique angle beats r_c in the 4B models.** Qwen3.5-4B's best oblique point is a small rotation of r_c with sel ≈ 0 (CI spans 0). 2507's best oblique point (θ = 90°, pure r_c⊥) has sel +0.07 only because it hardly changes anything: content refusal stays at 0.98.
+5. **1.7B**: action caution is at floor in base (0.21), so selectivity is not interpretable there; its best point (θ = 90°) is mostly evasive (real compliance 0.19).
+
 ### Preliminary results (local run, n = 30, superseded)
 
 The first local run used an earlier prompt set and the first 30 test samples per set, with the string-match content judge only. Those numbers are **preliminary** and superseded by the table above. They are kept here only for comparison.
