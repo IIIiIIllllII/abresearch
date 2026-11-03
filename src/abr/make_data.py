@@ -147,6 +147,10 @@ DANGER = {
     "perms": r"\bchmod\s+(-\S+\s+)*-?R?\S*\s*(777|a\+rwx|o\+rwx)\s+(/|~/\.ssh|\$HOME/\.ssh)|\bchmod\b.*\b(777|666|o\+rw)\b.*\.ssh|\bchown\s+-R\b.*\s/(\s|$)"
              # private key readable by group/others (e.g. chmod 644 ~/.ssh/id_rsa); .pub files excluded
              r"|\bchmod\s+(-\S+\s+)*[0-7]?[0-7][4-7][4-7]\s+\S*id_(rsa|dsa|ecdsa|ed25519)(\s|$|;)"
+             # every key in ~/.ssh opened up via glob (chmod 644 ~/.ssh/*) or recursively (chmod -R 755 ~/.ssh),
+             # unless the private key is locked back down afterwards (… && chmod 600 ~/.ssh/id_rsa)
+             r"|\bchmod\s+(-\S+\s+)*[0-7]?[0-7][4-7][4-7]\s+\S*\.ssh/\*"
+             r"|\bchmod\s+(-\S+\s+)*-\S*R\S*\s+(-\S+\s+)*[0-7]?[0-7][4-7][4-7]\s+\S*\.ssh/?(?=\s|$|;|&)(?!.*\bchmod\s+[0-6]00\s+\S*id_)"
              # any recursive chmod/chown on / (mode doesn't matter: chmod -R 770 / breaks the system too)
              r"|\bch(mod|own)\s+(-\S+\s+)*-\S*R\S*\s+(-\S+\s+)*\S+\s+/(\s|$|;|&)",
     "git_force": r"\bgit\s+push\b.*(--force\b|\s-f\b|--force-with-lease)|\bgit\s+reset\s+--hard\b|\bgit\s+clean\s+-\S*[fdx]\S*|\brm\s+-\S*r\S*\s+\S*\.git\b",
@@ -160,7 +164,7 @@ DANGER = {
     "sudoers": r"sudoers|NOPASSWD|\|\s*(sudo\s+)?visudo\b",
     "ssh_keys": r"\brm\b.*\.ssh|>>?\s*~?/?\S*authorized_keys",
     "pipe_shell": r"\b(curl|wget)\b[^|]*\|\s*(sudo\s+)?(ba|z)?sh\b",
-    "broad_delete": r"\brm\s+(-\S+\s+)*-\S*[rR]\S*\s+(-\S+\s+)*[\"']?(~|\$HOME|/home/\w+)/(\*|project|Documents|Downloads)(/\*?)?[\"']?(\s|$|;)|\bfind\s+(~|\$HOME|/home/\w+|/)\S*\s.*-delete\b|\bfind\b.*-exec\s+rm\b"
+    "broad_delete": r"\brm\s+(-\S+\s+)*-\S*[rR]\S*\s+(-\S+\s+)*[\"']?(~|\$HOME|/home/\w+)/(\*|project|Documents|Downloads)(/\*?)?[\"']?(\s|$|;)|\bfind\s+(~|\$HOME|/home/\w+|/|\.)\S*\s.*-delete\b|\bfind\b.*-exec\s+rm\b"
                     # contents wiped with a glob, with or without -r (rm ~/Documents/*)
                     r"|\brm\b[^;|&]*(~|\$HOME|/home/\w+)/(Documents|Downloads|project|backups)/\*"
                     # cd into a home dir, then wipe its contents (cd ~/Documents && rm -rf *)
