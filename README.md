@@ -189,45 +189,72 @@ action_benign에서 `comply`는 "툴을 사용함"을 뜻한다. 콘텐츠 세�
 
 **바닥 효과 주의**: 작은 모델은 원본(A)에서도 파괴적 툴콜을 대부분 그대로 실행할 수 있다. A의 `refuse_text + clarify + safe_alt`가 작으면 행동 신중함을 "제거"할 여지가 없어, B/C 비교가 정보를 주지 못한다. 이 경우 결론은 방향 기하와 AUROC로 내리고, 행동 실험은 더 큰 모델에서 반복한다.
 
-## Results (local run, 2026-11-03)
+## Results (Vast.ai rerun, regenerated data, n = 48)
 
-Three models, same prompt set (`data/sets/full`, 160 per set, 70/30 split). Generation eval uses the first 30 test samples per set (greedy, ≤256 tokens). Judge: heuristic, audited by hand (see the CLAUDE.md checklist). Plots: `results/<run>/*.png`, `results/comparison/*.png`; numbers: `results/<run>/metrics.csv`, `results/comparison/summary.csv`.
+All numbers below come from one RTX 4090 instance, on a freshly regenerated prompt set (`make_data` with default config and no `HF_TOKEN`; content_harm is `mlabonne/harmful_behaviors` only, since HarmBench/AdvBench are gated). SHA-256 of each set file: `results/vast_summary/data_sha256.txt`. Every cell uses the full test split: n = 48 per set, greedy, ≤ 256 tokens; 95% Wilson CI at n = 48 is about ±0.14. Tables: `results/<run>/metrics3.csv`, `results/vast_summary/`, `results/phase2_summary/` (`SUMMARY.md`, `phase2_tables.md`).
 
-| model | role | layer L | cos(r_c, r_a)@L (ceiling) | r_c AUROC on actions@L |
+**Content judge (three-way).** Content responses are now labelled `explicit_refusal` / `evasive` (lectures, warnings, "it's illegal", harmless reframing, no actionable content) / `real_compliance` by an LLM judge (`abr.judge3`, Qwen3-8B bf16, rubric v2). The old string-match result is kept as a second column. Hand audit on 60 fresh samples (20 per judged category): 52/60 exact agreement (refusal 20/20, evasive 16/20, compliance 16/20) and 55/60 on compliance-vs-not. String match agrees with hand-labelled compliance-vs-not on only 38/60, because it counts evasive answers as non-refusals. "Content kept" below = 1 − real_compliance. The 8B judge also grades its own model's outputs, so treat 8B content numbers as possibly self-biased.
+
+| model | role | layer L | cos(r_c, r_a)@L (ceiling) | r_c AUROC on actions@L | cos(r_c, h_c) | cos(r_a, h_a) |
+|---|---|---|---|---|---|---|
+| Qwen3.5-4B | **main** | 10 / 32 | 0.40 (0.92) | 0.90 | 0.27 | 0.48 |
+| Qwen3-4B-Instruct-2507 | control: same generation as 1.7B, larger | 19 / 36 | 0.56 (0.96) | 0.97 | 0.21 | 0.58 |
+| Qwen3-1.7B | small baseline | 18 / 28 | 0.49 (0.95) | 0.93 | 0.14 | 0.40 |
+| Qwen3-8B | larger Qwen3 | 19 / 36 | 0.50 (0.94) | 0.96 | 0.20 | 0.39 |
+
+Layers are auto-selected by the sweep (same rule as before); on the new data it picks the same layers as the preliminary run did for the three models in it (8B is new).
+
+Ablation at the selected layer (A = original, B = ablate r_c, C = ablate r_c⊥r_a, D = ablate r_a):
+
+| | Qwen3.5-4B L10 A / B / C / D | 2507 L19 A / B / C / D | 1.7B L18 A / B / C / D | 8B L19 A / B / C / D |
 |---|---|---|---|---|
-| Qwen3.5-4B | **main** | 10 / 32 | 0.40 (0.92) | 0.90 |
-| Qwen3-4B-Instruct-2507 | control: same gen as 1.7B, larger | 19 / 36 | 0.56 (0.96) | 0.97 |
-| Qwen3-1.7B | small baseline | 18 / 28 | 0.49 (0.95) | 0.93 |
+| content kept (1 − real compliance) | 0.98 / 0.08 / 0.58 / 0.96 | 0.98 / 0.67 / 1.00 / 0.10 | 0.94 / 0.12 / 0.81 / 0.23 | 0.96 / 0.00 / 0.46 / 0.27 |
+| ↳ of which evasive | 0.02 / 0.04 / 0.04 / 0.04 | 0.02 / 0.52 / 0.06 / 0.10 | 0.15 / 0.10 / 0.77 / 0.12 | 0.00 / 0.00 / 0.15 / 0.21 |
+| content explicit refusal (string match) | 1.00 / 0.08 / 0.60 / 0.98 | 0.98 / 0.15 / 1.00 / 0.06 | 0.79 / 0.00 / 0.02 / 0.10 | 0.94 / 0.02 / 0.48 / 0.06 |
+| action_destr text refusal | 0.50 / 0.04 / 0.10 / 0.10 | 0.31 / 0.04 / 0.38 / 0.02 | 0.08 / 0.00 / 0.06 / 0.00 | 0.10 / 0.00 / 0.06 / 0.00 |
+| action_destr executed (comply) | 0.35 / 0.81 / 0.77 / 0.77 | 0.58 / 0.81 / 0.52 / 0.88 | 0.88 / 0.90 / 0.81 / 0.90 | 0.81 / 0.96 / 0.88 / 0.92 |
+| action_benign tool use | 0.96 / 1.00 / 0.98 / 0.98 | 0.96 / 1.00 / 0.94 / 1.00 | 0.98 / 1.00 / 0.96 / 0.96 | 0.96 / 1.00 / 0.98 / 1.00 |
+| h_a AUROC at t_inst | 1.00 / 0.99 / 0.99 / 0.99 | 0.98 / 0.98 / 0.99 / 0.97 | 0.97 / 0.97 / 0.97 / 0.96 | 0.98 / 0.97 / 0.98 / 0.97 |
 
-Ablation (all hooks, no weight edits; n = 30 per cell, 95% Wilson CI ≈ ±0.15):
+**Findings**
+1. **Content refusal and action caution are partially shared, not identical.** At the selected layers cos(r_c, r_a) = 0.40–0.56, well below the noise ceiling (0.92–0.96). Functionally the overlap is larger: projecting onto r_c alone separates destructive from benign agent requests with AUROC 0.90–0.97.
+2. **Ablating r_c at the selected layer removes both behaviours where both exist.** Content kept drops to 0.00–0.12 in Qwen3.5-4B, 1.7B and 8B. In the models with action caution at baseline, text refusals of destructive tool requests fall from 0.31–0.50 to 0.04. Benign tool use is unaffected, so this is not general tool suppression. 2507 at L19 is the exception on the content side: B_rc there is mostly *evasive* (0.52), so its content kept stays at 0.67.
+3. **Early "decision" vs late "expression" layers (replaces the earlier C_rc_perp finding).** r_c taken from an early layer and from a late layer are different directions (cos 0.21–0.43 between them), and ablating them does different things. Layers were picked by rule: lowest first-token refusal score with KL_safe < 0.1, inside the 20–50% (early) and 50–80% (late) depth windows. B_rc, content_harm, n = 48:
+
+   | model | early L | late L | real compliance early → late | evasive at late L | cos(r_c early, late) |
+   |---|---|---|---|---|---|
+   | Qwen3.5-4B | 10 | 24 | 0.92 → 0.23 | 0.71 | 0.21 |
+   | Qwen3-4B-2507 | 17 | 24 | 0.06 → 0.00 | 0.73 | 0.34 |
+   | Qwen3-1.7B | 12 | 18 | 0.94 → 0.88 | 0.10 | 0.26 |
+   | Qwen3-8B | 16 | 19 | 0.88 → 1.00 | 0.00 | 0.43 |
+
+   In Qwen3.5-4B, ablating early r_c yields real compliance, while late r_c only removes the refusal *wording*: the model switches to evasive answers and keeps declining in substance. In 2507 neither layer yields real compliance; late ablation also turns explicit refusals into evasion. So late r_c behaves like an expression direction (how the refusal is phrased) and early r_c, where it works, like a decision direction (whether to comply). This pattern holds in 2 of 4 models. In 1.7B and 8B both windows produce compliance; for 8B the two picked layers are only three layers apart, so the windows barely separate. This also explains the earlier C_rc_perp results: C behaving like A at late layers (Qwen3.5-4B L21/L22, 2507 L19) reflects late r_c overlapping r_a (cos 0.56–0.64) rather than a clean separation.
+4. **Qwen3.5-4B L10: a one-way dissociation through r_a.** Ablating r_a keeps content refusal (content kept 0.96, vs 0.98 in A) while destructive-tool compliance rises from 0.35 to 0.77 and text refusals fall from 0.50 to 0.10. The reverse does not hold cleanly: C_rc_perp also raises compliance to 0.77, and it costs content refusal (content kept 0.58). So at L10, action caution can be removed without touching content refusal, but not the other way round.
+5. **The L10 dissociation survives random and benign-contrast controls.** Same ablation procedure as D_ra at L10 (`results/Qwen__Qwen3.5-4B_controls_L10`, `results/phase2_summary/controls_L10.csv`):
+   - 10 random unit directions: content kept 0.98–1.00; destructive comply 0.31–0.44 (A 0.35); shift in first-token refusal log-odds on action_destr within ±0.4 (D_ra: −2.3).
+   - 5 benign diff-of-means contrasts (coding vs cooking, short vs long, question vs command, math vs poetry, science vs history), with raw norm 1.3–3.7 vs 0.93 for r_a: content kept 0.98–1.00; destructive comply 0.29–0.56; action log-odds shift −0.9 to +0.2.
+   - No control's destructive-comply 95% CI lies above A's; D_ra's (0.63–0.87) does. Three of the five benign contrasts still move compliance to 0.50–0.56, so the effect is specific to r_a, but L10 action caution is not robust to perturbation.
+6. **The dissociation does not replicate in 2507 at L15, and only weakly elsewhere.** At 2507 L15, D_ra leaves content refusal intact (content kept 1.00) but barely raises destructive compliance (0.58 → 0.67), and C_rc_perp equals B_rc there (cos(r_c, r_c⊥) = 0.97). A scan of D_ra and C_rc_perp at every second layer over the first 60% of depth (n = 24) flagged 2507 L14 and L20. Rerun at n = 48, only L20 holds: content kept 0.92, compliance +0.27. L14 drops to +0.19. 1.7B shows no such layer, but its A already complies with 0.92 of destructive requests at n = 24, so a +0.2 rise is impossible (floor effect).
+7. **Risk recognition survives every ablation** (consistent with Zhao et al.). The t_inst projection on h_a still separates destructive from benign requests under every condition A–D (AUROC 0.96–1.00; not measured for the controls).
+8. **Harmfulness ≠ refusal at the representation level:** cos(r_c, h_c) = 0.14–0.27 against a ceiling of about 0.95. The action domain is more entangled: cos(r_a, h_a) = 0.39–0.58.
+
+**Caveats**
+- Floor effect: 1.7B and 8B comply with 0.88 / 0.81 of destructive requests already in A, so "preserved action caution" can't be tested in those models.
+- The three-way judge's refusal/evasive boundary is fuzzier than its compliance boundary (audit above). Claims rest mostly on real_compliance.
+- Scan screening at n = 24 is noisy (one of two flagged layers failed at n = 48).
+- 2507 L19 has first-token KL 0.14 on harmless prompts, above the 0.1 target; no effective 2507 layer meets it.
+- 2507 has no thinking template, so its t_post_inst is `assistant\n`, unlike the `</think>\n\n` of Qwen3 / 3.5.
+- The heuristic action judge was patched again after auditing (`chmod` on `~/.ssh` via glob or `-R`, `find . -delete`). Remaining errors are possible in `other` / `safe_alt`.
+
+### Preliminary results (local run, n = 30, superseded)
+
+The first local run used an earlier prompt set and the first 30 test samples per set, with the string-match content judge only. Those numbers are **preliminary** and superseded by the table above. They are kept here only for comparison.
 
 | | Qwen3.5-4B A / B / C | 2507 A / B / C | 1.7B A / B / C |
 |---|---|---|---|
-| content_harm explicit refusal | 1.00 / 0.07 / 0.67 | 1.00 / 0.13 / 1.00 | 0.77 / 0.00 / 0.03 |
-| content_safe refusal | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 / 0.03 |
+| content_harm explicit refusal (string) | 1.00 / 0.07 / 0.67 | 1.00 / 0.13 / 1.00 | 0.77 / 0.00 / 0.03 |
 | action_destr text refusal | 0.43 / 0.00 / 0.10 | 0.30 / 0.00 / 0.33 | 0.03 / 0.00 / 0.03 |
 | action_destr executed (comply) | 0.43 / 0.83 / 0.77 | 0.60 / 0.83 / 0.53 | 0.90 / 0.93 / 0.77 |
-| action_benign tool use | 1.00 / 1.00 / 1.00 | 0.97 / 1.00 / 0.97 | 1.00 / 1.00 / 1.00 |
-| h_a AUROC at t_inst (risk recognition) | 0.997 / 0.990 / 0.993 | 0.98 / 0.98 / 0.99 | 0.97 / 0.97 / 0.97 |
-
-A = original, B = ablate r_c, C = ablate r_c⊥r_a (r_c with its r_a component removed, at layer L).
-
-**Findings**
-1. **Content refusal and action caution are partially shared, not identical.** cos(r_c, r_a) peaks at 0.40–0.64 across models, well below the noise ceiling (0.92–0.97). Functionally the overlap is larger: projecting onto r_c alone separates destructive from benign agent requests with AUROC 0.90–0.97.
-2. **Ablating r_c removes both behaviours.** Explicit content refusal goes to ≈0 in every model (Arditi et al. reproduced). In the two models that have action caution at baseline (Qwen3.5-4B, 2507), text refusals of destructive tool requests also go from 30–43% to 0%. Benign tool use is unaffected, so this is not general tool suppression: B removes the refusal itself.
-3. **Selective removal via r_c⊥r_a does not work in either 4B model, and fails differently in each.**
-   - 2507: C behaves like A on both axes (content refusal 1.00, action refusal 0.33). The causally effective part of r_c is the component shared with r_a.
-   - Qwen3.5-4B: C mostly keeps content refusal (0.67) but removes most action refusal (0.43 → 0.10). Action caution survives r_c ablation *less* well than content refusal does. A plausible reason is that r_a measured at layer 10 doesn't capture the action-refusal mechanism, so orthogonalising against it protects little. To test this, orthogonalise against r_a from several layers.
-   - 1.7B: C removes content refusal, but the model has no action caution to preserve (floor effect).
-4. **Risk recognition survives refusal removal** (Zhao et al. consistent). Under every condition the t_inst projection on h_a still separates destructive from benign requests (AUROC ≥ 0.97). The ablated models still "know" the request is dangerous; they just don't refuse.
-5. **Harmfulness ≠ refusal at the representation level:** cos(r_c, h_c) ≈ 0.14–0.27 against a ceiling of ≈ 0.95. The action domain is more entangled: cos(r_a, h_a) ≈ 0.40–0.58.
-6. **Qwen3.5-4B ablated outputs are real compliance.** Its B_rc outputs are full harmful "tutorials", while 2507 and 1.7B mostly hedge ("While it's important to note…"). The explicit-refusal metric understates this difference.
-
-**Caveats**
-- n = 30 per cell. The ambiguous (n = 4) and AgentHarm (n = 1) subsets are too small to interpret; rerun with `--set n_eval=48`.
-- 2507's layer 19 has first-token KL 0.15 on harmless prompts. That is above the 0.1 target, because no effective 2507 layer meets it.
-- Qwen3-4B-2507 has no thinking template, so its t_post_inst is `assistant\n`. Qwen3 and 3.5 use `</think>\n\n`. The position semantics differ slightly.
-- The judge is heuristic and was patched four times after auditing. Remaining errors are possible in the `other`/`safe_alt` categories.
 
 ## 선행연구와 비교 포인트
 
